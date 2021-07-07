@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  </head>
+  <body style="overflow-x: hidden;">
+    <style>
+      .in_progress{
+        cursor: progress;
+      }
+      .stage{
+        display: inline-flex;
+        -webkit-flex-shrink: 0;
+        flex-shrink: 0;
+        margin: 0 auto;
+        min-height: 0;
+        -webkit-transition: .2s;
+        transition: .2s;
+        margin-top:10vh;
+        position: relative;
+        justify-content: flex-start;
+        align-items: center;
+        margin-left: calc(50% - 224px);
+        flex-wrap: nowrap;
+        flex-direction: row;
+      }
+      .content{
+        padding: 48px 40px 36px;
+        min-height: 500px;
+        border-radius: 8px;
+        border: 1px solid #dadce0;
+        width: 368px;
+        position: relative;
+        transform: scale(0.7);
+        opacity: 0;
+        transition: 1s cubic-bezier(.17,.67,.14,1.03);
+        margin-right: 100px;
+      }
+      .active{
+        opacity: 1!important;
+        transform: scale(1);
+        
+      }
+      .ttl{
+        color: #202124;
+        padding-bottom: 0;
+        padding-top: 16px;
+        font-family: 'Google Sans','Noto Sans Myanmar UI',arial,sans-serif;
+        font-size: 24px;
+        font-weight: 400;
+        line-height: 1.3333;
+      }
+
+      .button{
+        background: #1a73e8;
+        font-family: "Google Sans",Roboto,Arial,sans-serif;
+        font-size: .875rem;
+        letter-spacing: .0107142857em;
+        font-weight: 500;
+        text-transform: none;
+        border: none;
+        padding: 10px;
+        color: white;
+        border-radius: var(--mdc-shape-small,4px);
+        cursor: pointer;
+      }
+      .button:hover{
+        background:#1b66ca;
+        box-shadow: 0 1px 2px 0 var(--gm-fillbutton-keyshadow-color,rgba(60,64,67,0.3)),0 1px 3px 1px var(--gm-fillbutton-ambientshadow-color,rgba(60,64,67,0.15));
+      }
+      .info{
+        font-family:roboto,'Noto Sans Myanmar UI',arial,sans-serif;
+        font-size: 14px;
+        text-align: center;
+      }
+      .hidden{
+        display: none!important;
+      }
+      #qr{
+        width: 200px;
+        height: 200px;
+        margin: 0 auto;
+        margin-top: 50px;
+        display: block;
+      }#details{
+        margin-top: 50px;
+      }
+      #details>span{
+        display: inline-block;
+        margin: 10px;
+      }
+      .loading_bar{
+        width: 60%;
+       margin: 0 auto;
+       margin-bottom: 30px;
+      }
+      .bg{
+        height: 10px;
+        background: whitesmoke;
+        border-radius: 7px;
+      }
+      .fg{
+        height: 10px;
+        width: 0px;
+        background: royalblue;
+        border-radius: 7px;
+        transition: .5s ease-out;
+      }
+      .tranzit{
+        opacity: 0.6;
+      }
+      .content::before{
+        opacity: 0;
+        width: 0;;
+        height: 0;
+        content:"" ;
+        
+      }
+    
+      .loader::before{
+        transition: .3s linear;
+        position: absolute;
+        width: calc(100% - 80px);
+        height: calc(100% - 74px);
+        background: white;
+        z-index: 99;
+        content:"BridgeMe";
+        opacity: 1;
+        font-family: 'Google Sans','Noto Sans Myanmar UI',arial,sans-serif;
+        font-size: 34px;
+        font-weight: 400;
+        line-height: 500px;
+        text-align: center;
+      }
+      .fading_loader{
+        opacity: 0!important;
+      }
+
+      #ending_screen::before{
+        transition: .3s linear;
+        position: absolute;
+        width: calc(100% - 80px);
+        height: calc(100% - 74px);
+        background: white;
+        z-index: 99;
+        content:"Thank You!";
+        opacity: 1;
+        font-family: 'Google Sans','Noto Sans Myanmar UI',arial,sans-serif;
+        font-size: 34px;
+        font-weight: 400;
+        line-height: 500px;
+        text-align: center;
+      }
+      .files{
+        max-height: 300px;
+        overflow-y: auto;
+      }
+    </style>
+    <div class="stage">
+      	<div class="content active" id="unconnected_screen">
+          <h1 style="text-align: center;"><span class="ttl" >BridgeMe</span></h1>
+          <canvas id="qr">  </canvas>
+           
+          <div class="wrp" style="position: absolute;bottom: 48px;text-align: center;width: calc(100% - 80px);">
+            <span class="info" id="nodata">Scan the QR core with your phone to transfer files.</span>
+          </div>
+        </div>
+        <div class="content loader" id="lobby">
+            <h1 style="text-align: center;"><span class="ttl" >BridgeMe</span></h1>
+            <div class="files">
+
+            </div>
+     
+            <div class="wrp" style="position: absolute;bottom: 48px;text-align: center;width: calc(100% - 80px);"> 
+              <div id="loading_bar_overall" class="hidden loading_bar">
+                <div class="bg">
+                <div class="fg"></div>
+                </div>
+              </div>
+                <button class="button" id="download_btn" onclick="startDownload()">Download</button>      
+            </div>
+        </div>
+
+        <div class="content" id="ending_screen">
+      
+
+        </div>
+    </div>
+  
+
+    <script src="./javascripts/socket.io-stream.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    <script src="./javascripts/socket.io.min.js"></script> 
+    <script src="https://cdn.jsdelivr.net/npm/web-streams-polyfill@2.0.2/dist/ponyfill.min.js"></script>
+    <!--script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script-->
+    <script src="./javascripts/StreamSaver.js"></script>
+
+    <script>
+      window.mus = {0:"b",1:"Kb",2:"Mb",3:"Gb",4:"Tb"}
+      	var qr;
+			(function() {
+                    qr = new QRious({
+                    element: document.getElementById('qr'),
+                    size: 200,
+                    value: '<%= token %>'
+                });
+            })();
+function base64ToArrayBuffer(base64) {
+    var binary_string = window.atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+function base64ToByteArray(base64String) {
+        try {            
+            var sliceSize = 1024;
+            var byteCharacters = atob(base64String);
+            var bytesLength = byteCharacters.length;
+            var slicesCount = Math.ceil(bytesLength / sliceSize);
+            var byteArrays = new Array(slicesCount);
+
+            for (var sliceIndex = 0; sliceIndex < slicesCount; ++sliceIndex) {
+                var begin = sliceIndex * sliceSize;
+                var end = Math.min(begin + sliceSize, bytesLength);
+
+                var bytes = new Array(end - begin);
+                for (var offset = begin, i = 0; offset < end; ++i, ++offset) {
+                    bytes[i] = byteCharacters[offset].charCodeAt(0);
+                }
+                byteArrays[sliceIndex] = new Uint8Array(bytes);
+            }
+            return byteArrays;
+        } catch (e) {
+            console.log("Couldn't convert to byte array: " + e);
+            return undefined;
+        }
+    }
+
+    function setNewReadConfig(tts,chunk_size){
+      window.socket.emit("message",{event:"CONFIG_UPDATE",tts:tts,chunk_size:chunk_size});
+      console.log("done");
+    }
+
+    async function downloadChunk(token,uuid,chunk_number){
+      return new Promise((resolve,reject)=>{
+            var req = new XMLHttpRequest();
+          req.open("GET", "http://192.168.1.151:3000/"+uuid+"___"+chunk_number, true);
+          req.responseType = "blob";
+          req.onload = function (event) {
+              var blob = req.response;
+             if(blob){
+               blob.arrayBuffer().then(res=>{
+                 resolve(new Uint8Array(res));
+               })
+             }else{
+               console.warn(blob);
+               reject("Invalid response!");
+             }
+          };
+
+          req.send();
+      });
+    }
+
+   
+    var downloader = {
+      filestreams: {},
+      writers:{},
+      metadata:{},
+      chunk_collections:{},
+      chunk_indexes:{},
+      callbacks:{},
+      finalized_items:0,
+
+      init:function(metadatas){
+        metadatas.forEach(md=>{
+          md.total_chunks = md.size / (1024*1024*5);
+          if(md.total_chunks < 1)
+            md.total_chunks = 1;
+          this.metadata[md.uuid] = md;
+          this.chunk_collections[md.uuid] = {};
+          this.chunk_indexes[md.uuid] = 1;
+        })
+      },
+      on:function(event,callback){
+        this.callbacks[event] = callback;
+      },
+      startAll:function(){
+          Object.keys(this.metadata).forEach(uuid=>{
+              this.start(uuid);
+          })
+      },
+      start:function(uuid){
+        if(!this.metadata[uuid] || !this.metadata[uuid].name) {
+          console.log("can t start",!this.metadata[uuid], !this.metadata[uuid].name)
+          return}
+
+        this.filestreams[uuid] = streamSaver.createWriteStream(this.metadata[uuid].name, {
+            // (optional filesize) Will show progress
+            writableStrategy: undefined, // (optional)
+            readableStrategy: undefined  // (optional)
+          })
+
+          this.writers[uuid] = this.filestreams[uuid].getWriter();
+
+          window.socket.emit("message",{event:"STREAM_REQUEST",uuid:uuid});
+          // Object.keys(window.downloader.metadata).forEach(uuid=>{
+            
+          // })
+      },
+      writeAvailableChunks:function(uuid){
+        var current_chunk = this.chunk_collections[uuid][this.chunk_indexes[uuid]];
+        while(current_chunk){
+          this.writers[uuid].write(current_chunk.data);
+        
+          delete window.chunk_collection[window.chunk_nr-1]
+          window.socket.emit("FREE_MEM",{token:window.token,uuid:uuid,seq: this.chunk_indexes[uuid]});
+          this.chunk_indexes[uuid]++;
+
+          current_chunk = this.chunk_collections[uuid][this.chunk_indexes[uuid]];
+
+        }
+        console.log(this.chunk_collections[uuid][this.chunk_indexes[uuid]-1].last_chunk, this.metadata[uuid].total_chunks < this.chunk_indexes[uuid])
+        if(this.chunk_collections[uuid][this.chunk_indexes[uuid]-1].last_chunk){ //|| this.metadata[uuid].total_chunks <= this.chunk_indexes[uuid]
+          this.finalize(uuid);
+        }
+      },
+      finalize:function(uuid){
+        if(this.writers[uuid]){
+          this.writers[uuid].close();
+          //this.writers[uuid].releaseLock();
+          delete this.writers[uuid];
+          setTimeout(()=>{
+            try{this.callbacks['finalizedItem'](this.metadata[uuid]);}catch(e){console.warn(e)}
+          },1);
+
+          this.finalized_items++;
+          if(this.finalized_items == Object.keys(this.metadata).length){
+            setTimeout(()=>{
+              try{this.callbacks['finalizedAll']();}catch(e){console.warn(e)}
+            },1);
+          }
+        }
+      },
+      pause:function(uuid){
+
+      },
+      resume:function(uuid){
+
+      },
+      cancel:function(uuid){
+
+      },
+      getProgress(uuid){
+        var pgr = Math.floor((this.chunk_indexes[uuid]/this.metadata[uuid].total_chunks)*100)
+        return pgr>100?100:pgr;
+      },
+      addChunk(chunk, uuid){
+        this.chunk_collections[uuid][chunk.seq_number] = chunk;
+      },
+      chunkAvailable(uuid){
+        return this.chunk_collections[uuid][this.chunk_indexes[uuid]];
+      }
+      
+    }
+
+    class gui {
+      constructor(){
+        this.shiftOffset = 0;
+        this.timeoutid = -1;
+      }
+
+      prevScreen(){
+        console.log('prev');
+        if(this.timeoutid != -1){ clearTimeout(this.timeoutid); this.timeoutid = -1;}
+        $('.content').addClass('loader');
+        var prevElement = $('.active').prev('.content')
+        console.log(prevElement)
+        $('.active').removeClass('active').addClass('tranzit')
+        var shift = 548;
+        this.shiftOffset = this.shiftOffset + shift;
+        prevElement.removeClass('tranzit').addClass('active');
+        $('.content:not(.active)').css('transform', "translateX("+this.shiftOffset+"px) scale(0.75)");
+        $('.active').css('transform', "translateX("+this.shiftOffset+"px) scale(1)");
+        this.timeoutid = setTimeout(()=>{$('.tranzit').removeClass('tranzit'); 
+         $('.active').addClass('fading_loader');
+        setTimeout(()=>{$('.active').removeClass('loader').removeClass('fading_loader');},300)
+      
+        },1000)
+      }
+
+      nextScreen(){
+        console.log('next');
+        if(this.timeoutid != -1){ clearTimeout(this.timeoutid); this.timeoutid = -1;}
+        $('.content').addClass('loader');
+        var nextElement = $('.active').next('.content')
+        console.log(nextElement)
+
+        $('.active').removeClass('active').addClass('tranzit')
+        var shift = -548;
+        this.shiftOffset = this.shiftOffset + shift;
+        nextElement.removeClass('tranzit').addClass('active');
+
+        $('.content:not(.active)').css('transform', "translateX("+this.shiftOffset+"px) scale(0.75)");
+        $('.active').css('transform', "translateX("+this.shiftOffset+"px) scale(1)");
+        this.timeoutid = setTimeout(()=>{$('.tranzit').removeClass('tranzit'); 
+        $('.active').addClass('fading_loader');
+        setTimeout(()=>{$('.active').removeClass('loader').removeClass('fading_loader');},300)
+      },1000)
+      }
+
+     async presentScreen(name){
+        var function_used = undefined;
+        if($('.active').attr('id') == name){
+          return;
+        }
+        
+        if($('.active').prev().attr('id') == name || $('.active').prevUntil('#'+name).last().prev().attr('id') == name){
+          function_used = this.prevScreen.bind(this);
+          console.log('selecting prev')
+        }
+        else if($('.active').next().attr('id') == name || $('.active').nextUntil('#'+name).last().next().attr('id') == name){
+          function_used = this.nextScreen.bind(this);
+          console.log('selecting next')
+        }else {
+          console.warn('screen not found');
+          return
+        };
+
+        while($('.active').attr('id') != name){
+          function_used();
+          await new Promise((r)=>{setTimeout(()=>{r(true)},300)})
+        }
+
+      }
+
+       presentUnconnectedScreen(){
+
+      }
+
+       presentLobbyScreen(metadata){
+        var details = $('.files');
+         metadata.forEach(md=>{
+            var size = md.size;
+            var measurement_unit_index = 0;
+            while(size>=1000){
+                size = size/1024;
+                measurement_unit_index++;
+            }
+            console.log(Math.floor(size*(measurement_unit_index))/(measurement_unit_index))
+            var name = md.name;
+            var md_injection = `<div id="details" class="info">
+              <span class="name"> `+name+`</span> |
+              <span class="size">`+Math.floor(size*(measurement_unit_index))/(measurement_unit_index)+" "+window.mus[measurement_unit_index]+` </span>
+              <div id="loading_bar_`+md.uuid+`" class="loading_bar">
+                <div class="bg">
+                <div class="fg"></div>
+                </div>
+              </div> </div>`
+
+            details.html(details.html()+md_injection);
+      
+
+         })
+        /*
+        document.getElementById('qr').classList.add("hidden");
+        document.getElementById('nodata').classList.add("hidden");
+        document.getElementById('name').innerHTML = "Name: "+ window.file.name;
+        document.getElementById('size').innerHTML = "Size: "+(Math.floor(window.file.size/10.24)/100) + " Kb";
+        document.getElementById('details').classList.remove("hidden");
+        document.getElementsByClassName('button')[0].classList.remove("hidden");
+        */
+         
+        this.presentScreen('lobby');
+        
+      }
+
+       presentEndScreen(){
+        this.presentScreen('ending_screen');
+      }
+
+       showProgressBar(){
+
+      }
+
+       hideProgressBar(){
+
+      }
+      updateLocalProgressBar(value,uuid){
+        document.getElementById('loading_bar_'+uuid).getElementsByClassName('fg')[0].style.width = value +"%";
+      }
+
+      updateMainProgressBar(value){
+        document.getElementById('loading_bar_overall').getElementsByClassName('fg')[0].style.width = value +"%";
+      }
+    }
+    var GUI = new gui();
+        window.callbackManager =  {registry:{},
+         setCallback:function(event,clb){
+                        if(!this.registry[event])
+                            this.registry[event]=[]
+                        this.registry[event].push(clb);
+                    }, 
+         getCallbacks:function(event){return  this.registry[event] = this.registry[event]?this.registry[event]:[];},
+         trigger:function(event,data){ 
+             this.getCallbacks(event).forEach(callback => {
+             setTimeout(()=>{callback(data);},1);
+            })
+         }
+        }; 
+        id = "test"//prompt("GIVE ID")
+        window.token = id;
+
+        var socket = io("http://localhost:3000")
+       
+        socket.on('message', function(data) {
+                if(typeof data == "string")
+                  data = JSON.parse(data);
+                var event = data.event;
+                window.callbackManager.trigger(event, data);
+        });
+
+        window.callbackManager.setCallback("PEER_INITED", (data)=>{
+           console.log("PEER_INITED ");
+           window.gui.presentUnconnectedScreen();//connected to server but Unconnected to the seeder
+        })
+        window.chunk_nr = 1;
+        window.chunk_collection = {}
+
+        //----- websocket file transfer example -----
+        window.callbackManager.setCallback("CHUNK",(data)=>{
+          var chunk = base64ToByteArray(data.chunk)[0]
+          window.chunk_collection[data.chunk_number] = chunk;
+
+          while(window.chunk_collection[window.chunk_nr]){
+            window.wrt.write(window.chunk_collection[window.chunk_nr]);
+
+            window.chunk_nr++;
+            delete window.chunk_collection[window.chunk_nr-1]
+            window.socket.emit("FREE_MEM",{token:window.token,uuid:window.file.uuid});
+
+
+          }
+         
+        })
+        //----------------
+
+        window.callbackManager.setCallback("METADATA",(data)=>{
+          window.metadata = data;
+          window.downloader.init(data.metadata);
+          window.downloader.on('finalizedItem',(mtd)=>{
+              window.socket.emit('message',{event:"FILE_TRANSFERED",uuid:mtd.uuid})
+          });
+
+          window.downloader.on('finalizedAll',()=>{
+            GUI.presentEndScreen();
+          });
+
+
+          GUI.presentLobbyScreen(data.metadata);
+        })
+        window.callbackManager.setCallback("CHUNK_UPLOAD", (data)=>{
+          $('body').removeClass('in_progress');
+
+          console.log("chunk_upload",data);
+          var uuid = data.uuid;
+          var cnr = data.chunk_number;
+          var last_chunk = data.last_chunk;
+
+          downloadChunk(window.token,uuid,cnr).then(chunk=>{
+              downloader.addChunk({data:chunk, last_chunk:last_chunk, seq_number:cnr}, uuid);
+              window.chunk_collection[data.chunk_number] = chunk;
+
+              while(downloader.chunkAvailable(uuid)){//window.chunk_collection[window.chunk_nr]){
+                window.downloader.writeAvailableChunks(uuid);//window.chunk_collection[window.chunk_nr]
+                var percentage = downloader.getProgress(uuid);
+                console.log(percentage);
+                GUI.updateLocalProgressBar(percentage, uuid);
+                window.socket.emit("message",{event:"UPLOAD_PROGRESS",uuid:uuid,percentage_uploaded:percentage});
+              }
+
+             
+          }).catch(err=>{console.error(err);});
+
+        });
+        window.onbeforeunload = ()=>{
+           // resetStream()
+        }
+        socket.on("PEER_INITED", (data)=>{
+          console.log("READY");
+          
+        })
+
+        function startDownload(){
+          //document.getElementById('loading_bar_overall').classList.remove("hidden");
+          window.downloader.startAll()
+          $('#download_btn').fadeOut(300);
+          $('body').addClass('in_progress');
+         
+        }
+
+        socket.emit('PEER_INIT',{token:id});
+        window.socket = socket;
+        
+       
+    </script>
+  </body>
+</html>

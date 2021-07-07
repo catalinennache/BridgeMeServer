@@ -1,0 +1,234 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('bridgemeserver:server');
+var http = require('http');
+var fs = require('fs');
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+function base64ToArrayBuffer(base64) {
+  var binary_string = window.atob(base64);
+  var len = binary_string.length;
+  var bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) {
+      bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function generateRandomString(size){
+  var _alphabet = "abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  var str = "";
+  for(let i = 0; i<size;i++){
+    str += _alphabet.charAt(Math.floor(Math.random()*_alphabet.length));
+  }
+  return str;
+}
+
+
+var ss = require('socket.io-stream');
+const { prependListener } = require('../app');
+
+const ConnectionsManager = require('./ConectionsManager');
+const Connection = require('./Connection');
+const File = require('./File');
+
+
+global.connectionsManager = new ConnectionsManager();
+
+function metaIsOk(rawfile){
+  //test the metadata
+  return true;
+}
+
+var io = require('socket.io')(server,{  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["content-type"]
+  },
+  // ...Or the old `allowRequest` function.
+  allowRequest: function(req, callback) {
+    callback(null, true);
+}});
+
+io.sockets.on('connection', function (socket) {
+  console.log("new connection",socket.id)
+    socket.on("APP_INIT", (data)=>{
+          data = JSON.parse(data)
+          console.log("setting source",data);
+          global.connectionsManager.mapSidWithToken(data.token,socket.id);
+          var connection  = global.connectionsManager.getConnection(data.token);
+          connection.clearFiles();
+          connection.setSeeder(socket);
+          // connection.peers.forEach(peer=>{
+          //    peer.emit("message",{event:"incomingConnection", filename:connection.filename, mimeType: connection.mimeType});
+          // })  
+          socket.emit("message",{event:"APP_INITED",parallel_transfer:false});
+            
+    });
+
+    socket.on("FREE_MEM", (data)=>{
+      var token = global.connectionsManager.getTokenBySid(socket.id);
+      if(token != data.token){
+        console.log("token mismatch, discarding call")
+        return;
+      }
+
+      var uuid = data.uuid;
+      var seq = data.seq; //chunk_number
+      if(!uuid || !seq){
+        console.log("UUID OR SEQ INVALID",uuid,seq);
+        return;
+      }
+      fs.unlink("public/"+uuid+"___"+seq,()=>{console.log("memory freed, seq",seq)});
+    })
+
+    socket.on("UPLOAD_REQUEST", (data) => {
+     
+        var metas = JSON.parse(data).metas;
+        console.log("UPLOAD_REQ",metas);
+        var uuids = []
+        var connection = global.connectionsManager.getConnection(global.connectionsManager.getTokenBySid(socket.id));
+
+        metas.forEach(rawfile => {
+          if(!metaIsOk(rawfile)){
+              uuids.push(null);
+              return
+          }
+          var id = generateRandomString(64);
+          var file = new File(id,rawfile.name,rawfile.size,rawfile.type);
+          uuids.push(id);
+          connection.addFile(file);
+        })
+        
+        connection.ackUploadRequest();
+        var tts = 100;
+        var chunk_size = 1024*1024*5; //5MB
+
+        socket.emit("UPLOAD_REQUEST_RESPONSE", {uuids:uuids,tts:tts,chunk_size:chunk_size})
+
+    })
+
+
+    socket.on("message",function(data){
+      let connection = global.connectionsManager.getConnection(global.connectionsManager.getTokenBySid(socket.id));
+      if(socket.id == connection.peer.id){
+        connection.forwardTo(Connection.SEEDER,data);
+      }else if(socket.id == connection.seeder.id){
+        connection.forwardTo(Connection.PEER,data);
+      }else{
+        //discard
+        console.log("packet discarded due to unmatching ids");
+        return
+      }
+      // if(peers.includes(socket) && connection.app){
+      //   connection.app.emit("message",data);
+      // }else
+      // if(connection.app && connection.app.id == socket.id && peers.length > 0)
+      //   peers.forEach(sck => {
+      //     console.log("message from",socket.id,"to",sck.id)
+      //       sck.emit("message",data)
+      // })
+      // else if(connection.app && connection.app.id == socket.id)
+      //  console.log("No peers found for this app") 
+      //  else{
+      //  console.log("No host set ",!connection.app,connection.app) 
+      //   if(connection.app)
+      //     console.log(connection.app.id, socket.id);
+      //  }
+
+    })
+
+   socket.on("PEER_INIT",data=>{
+      var connection = global.connectionsManager.getConnection(data.token);
+      connection.setPeer(socket);
+      global.connectionsManager.mapSidWithToken(data.token, socket.id);
+      global.connectionsManager.update(data.token,connection);
+      socket.emit("PEER_INITED",{})
+      console.log("user inited")
+   })
+});
+
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
